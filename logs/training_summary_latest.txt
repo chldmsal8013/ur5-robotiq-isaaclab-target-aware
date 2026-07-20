@@ -1,0 +1,100 @@
+     Episode_Reward/lifting_object: 2.1895
+Episode_Reward/object_goal_tracking: 0.2436
+Episode_Reward/object_goal_tracking_fine_grained: 0.0016
+        Episode_Reward/action_rate: -0.0193
+          Episode_Reward/joint_vel: -0.0036
+  Episode_Reward/wrist_1_deviation: -0.0348
+  Episode_Reward/wrist_2_deviation: -0.0265
+Metrics/object_pose/position_error: 0.8055
+Metrics/object_pose/orientation_error: 2.2841
+      Episode_Termination/time_out: 0.4924
+Episode_Termination/object_dropping: 0.5076
+--------------------------------------------------------------------------------
+                   Total timesteps: 1129906176
+                    Iteration time: 1.77s
+                      Time elapsed: 05:51:10
+                               ETA: 09:25:25
+
+################################################################################
+                    [1m Learning iteration 11494/30000 [0m                    
+
+                       Computation: 55040 steps/s (collection: 1.736s, learning 0.050s)
+             Mean action noise std: 2.26
+          Mean value_function loss: 0.0584
+               Mean surrogate loss: 0.0077
+                 Mean entropy loss: 8.4876
+                       Mean reward: 12.04
+               Mean episode length: 144.70
+    Episode_Reward/reaching_object: 0.0514
+     Episode_Reward/lifting_object: 2.1867
+Episode_Reward/object_goal_tracking: 0.2326
+Episode_Reward/object_goal_tracking_fine_grained: 0.0014
+        Episode_Reward/action_rate: -0.0191
+          Episode_Reward/joint_vel: -0.0036
+  Episode_Reward/wrist_1_deviation: -0.0338
+  Episode_Reward/wrist_2_deviation: -0.0258
+Metrics/object_pose/position_error: 0.8121
+Metrics/object_pose/orientation_error: 2.2920
+      Episode_Termination/time_out: 0.4992
+Episode_Termination/object_dropping: 0.5008
+--------------------------------------------------------------------------------
+                   Total timesteps: 1130004480
+                    Iteration time: 1.79s
+                      Time elapsed: 05:51:11
+                               ETA: 09:25:23
+
+################################################################################
+                    [1m Learning iteration 11495/30000 [0m                    
+
+                       Computation: 55656 steps/s (collection: 1.718s, learning 0.049s)
+             Mean action noise std: 2.26
+          Mean value_function loss: 0.0455
+               Mean surrogate loss: 0.0064
+                 Mean entropy loss: 8.4849
+                       Mean reward: 11.64
+               Mean episode length: 140.45
+    Episode_Reward/reaching_object: 0.0512
+     Episode_Reward/lifting_object: 2.1211
+Episode_Reward/object_goal_tracking: 0.2215
+Episode_Reward/object_goal_tracking_fine_grained: 0.0011
+        Episode_Reward/action_rate: -0.0182
+          Episode_Reward/joint_vel: -0.0036
+  Episode_Reward/wrist_1_deviation: -0.0321
+  Episode_Reward/wrist_2_deviation: -0.0245
+Metrics/object_pose/position_error: 0.8319
+Metrics/object_pose/orientation_error: 2.3710
+      Episode_Termination/time_out: 0.4903
+Episode_Termination/object_dropping: 0.5097
+--------------------------------------------------------------------------------
+                   Total timesteps: 1130102784
+                    Iteration time: 1.77s
+                      Time elapsed: 05:51:13
+                               ETA: 09:25:21
+
+################################################################################
+                    [1m Learning iteration 11496/30000 [0m                    
+
+                       Computation: 55846 steps/s (collection: 1.711s, learning 0.049s)
+             Mean action noise std: 2.26
+          Mean value_function loss: 0.0423
+               Mean surrogate loss: 0.0052
+                 Mean entropy loss: 8.4831
+                       Mean reward: 11.98
+               Mean episode length: 151.07
+    Episode_Reward/reaching_object: 0.0526
+     Episode_Reward/lifting_object: 2.1553
+Episode_Reward/object_goal_tracking: 0.2389
+Episode_Reward/object_goal_tracking_fine_grained: 0.0016
+        Episode_Reward/action_rate: -0.0189
+          Episode_Reward/joint_vel: -0.0036
+  Episode_Reward/wrist_1_deviation: -0.0338
+  Episode_Reward/wrist_2_deviation: -0.0262
+Metrics/object_pose/position_error: 0.8110
+Metrics/object_pose/orientation_error: 2.3313
+      Episode_Termination/time_out: 0.4850
+Episode_Termination/object_dropping: 0.5150
+--------------------------------------------------------------------------------
+                   Total timesteps: 1130201088
+                    Iteration time: 1.76s
+                      Time elapsed: 05:51:15
+                               ETA: 09:25:19

@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+
+# Isaac Lab / RL artifacts
+*.pt
+*.pkl
+*.h5
+logs/**/checkpoints/
+logs/**/*.pt
+videos/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Large log files (keep only summary)
+training_lift_30k.txt
+training_stack_fresh.txt
+*.log
