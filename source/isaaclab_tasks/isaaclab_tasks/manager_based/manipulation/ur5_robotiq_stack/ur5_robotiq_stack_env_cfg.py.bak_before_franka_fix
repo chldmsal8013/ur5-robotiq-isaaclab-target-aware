@@ -1,0 +1,408 @@
+# UR5 + Robotiq 2F-85  —  Pick & Stack configs in one file
+#
+# ACTIVE TASK: Pick  (UR5RobotiqStackEnvCfg.__post_init__ uses Pick* classes)
+#
+# To switch to Stacking:
+#   1. In __post_init__, replace the four "# PICK" lines with the "# STACKING" lines below them
+#   2. Uncomment the cube_1 / cube_3 scene blocks in __post_init__
+#   3. Change randomize_cube_position → randomize_cube_positions in StackingEventCfg
+
+from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.assets import ArticulationCfg, RigidObjectCfg
+from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
+from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
+from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
+from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
+from isaaclab.markers.config import FRAME_MARKER_CFG
+from isaaclab.sensors import FrameTransformerCfg
+from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
+from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg, ArticulationRootPropertiesCfg
+from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
+from isaaclab.utils import configclass
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+
+from isaaclab_tasks.manager_based.manipulation.lift import mdp as lift_mdp
+from isaaclab_tasks.manager_based.manipulation.stack import mdp
+from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_events
+from isaaclab_tasks.manager_based.manipulation.stack.stack_env_cfg import StackEnvCfg
+from . import ur5_stack_rewards as rewards
+
+
+# ── Shared: robot USD ────────────────────────────────────────────────────────
+
+UR5_ROBOTIQ_CFG = ArticulationCfg(
+    spawn=UsdFileCfg(
+        usd_path="/home/choi/ur5_robotiq_2f85.usd",
+        rigid_props=RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            max_depenetration_velocity=5.0,
+        ),
+        articulation_props=ArticulationRootPropertiesCfg(
+            enabled_self_collisions=False,
+            solver_position_iteration_count=16,
+            solver_velocity_iteration_count=0,
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        joint_pos={
+            "shoulder_pan_joint":              0.0,
+            "shoulder_lift_joint":            -1.712,
+            "elbow_joint":                     1.712,
+            "wrist_1_joint":                  -1.571,
+            "wrist_2_joint":                  -1.571,
+            "finger_joint":                    0.0,
+            "right_outer_knuckle_joint":       0.0,
+            "right_inner_finger_joint":        0.0,
+            "right_inner_finger_knuckle_joint":0.0,
+            "left_inner_finger_knuckle_joint": 0.0,
+            "left_inner_finger_joint":         0.0,
+        },
+    ),
+    actuators={
+        "arm": ImplicitActuatorCfg(
+            joint_names_expr=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
+                              "wrist_1_joint", "wrist_2_joint"],
+            stiffness=400.0,
+            damping=60.0,
+        ),
+        "gripper_drive": ImplicitActuatorCfg(
+            joint_names_expr=["finger_joint"],
+            effort_limit_sim=10.0,
+            velocity_limit_sim=1.0,
+            stiffness=11.25,
+            damping=0.1,
+        ),
+        "gripper_passive": ImplicitActuatorCfg(
+            joint_names_expr=[
+                "right_outer_knuckle_joint",
+                "right_inner_finger_joint",
+                "right_inner_finger_knuckle_joint",
+                "left_inner_finger_knuckle_joint",
+                "left_inner_finger_joint",
+            ],
+            stiffness=0.0,
+            damping=0.01,
+        ),
+    },
+)
+
+
+# ── Shared: scene entity shortcuts ───────────────────────────────────────────
+
+_CUBE2 = SceneEntityCfg("cube_2")
+_CUBE1 = SceneEntityCfg("cube_1")
+_ROBOT = SceneEntityCfg("robot")
+_EE    = SceneEntityCfg("ee_frame")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PICK  (ACTIVE)
+# ════════════════════════════════════════════════════════════════════════════
+
+@configclass
+class PickEventCfg:
+    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
+    init_arm_pose = EventTerm(
+        func=franka_stack_events.set_default_joint_pose,
+        mode="reset",
+        params={"default_pose": [0.0, -1.712, 1.712, -1.571, -1.571,
+                                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]},
+    )
+    randomize_arm_joint_state = EventTerm(
+        func=franka_stack_events.randomize_joint_by_gaussian_offset,
+        mode="reset",
+        params={"mean": 0.0, "std": 0.02, "asset_cfg": _ROBOT},
+    )
+    randomize_cube_position = EventTerm(
+        func=franka_stack_events.randomize_object_pose,
+        mode="reset",
+        params={
+            "pose_range": {"x": (0.35, 0.55), "y": (-0.15, 0.15),
+                           "z": (0.0203, 0.0203), "yaw": (-1.0, 1.0)},
+            "min_separation": 0.10,
+            "asset_cfgs": [_CUBE2],
+        },
+    )
+
+
+@configclass
+class PickRewardsCfg:
+    # 1. Approach (Franka lift style — tanh kernel)
+    reaching_cube = RewTerm(
+        func=lift_mdp.object_ee_distance,
+        weight=1.0,
+        params={"std": 0.3, "object_cfg": _CUBE2, "ee_frame_cfg": _EE},
+    )
+    # 2. Lift (Franka lift style — binary; physics filters fake grasps automatically)
+    lifting_cube = RewTerm(
+        func=rewards.object_is_lifted_env,
+        weight=15.0,
+        params={"minimal_height": 0.03, "object_cfg": _CUBE2},
+    )
+    # 3. Success bonus (goal height)
+    pick_success = RewTerm(
+        func=rewards.pick_success_reward,
+        weight=16.0,
+        params={"object_cfg": _CUBE2,
+                "goal_height": 0.15, "height_threshold": 0.03},
+    )
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    joint_vel   = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4,
+                          params={"asset_cfg": _ROBOT})
+
+
+@configclass
+class PickTerminationsCfg:
+    time_out     = DoneTerm(func=mdp.time_out, time_out=True)
+    cube_dropped = DoneTerm(func=mdp.root_height_below_minimum,
+                            params={"minimum_height": -0.05, "asset_cfg": _CUBE2})
+    success      = DoneTerm(
+        func=rewards.pick_success_termination,
+        params={"object_cfg": _CUBE2,
+                "goal_height": 0.15, "height_threshold": 0.03},
+    )
+
+
+@configclass
+class PickObservationsCfg:
+    @configclass
+    class PolicyCfg(ObsGroup):
+        actions   = ObsTerm(func=mdp.last_action)
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, clip=(-5.0, 5.0))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, clip=(-5.0, 5.0))
+        cube_pos  = ObsTerm(
+            func=lift_mdp.object_position_in_robot_root_frame,
+            params={"object_cfg": _CUBE2},
+            clip=(-5.0, 5.0),
+        )
+        eef_pos   = ObsTerm(func=mdp.ee_frame_pos,   clip=(-5.0, 5.0))
+        eef_quat  = ObsTerm(func=mdp.ee_frame_quat)
+
+        def __post_init__(self):
+            self.enable_corruption   = True
+            self.concatenate_terms   = True
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# STACKING  (INACTIVE — wire up in __post_init__ to re-enable)
+# ════════════════════════════════════════════════════════════════════════════
+
+@configclass
+class StackingEventCfg:
+    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
+    init_arm_pose = EventTerm(
+        func=franka_stack_events.set_default_joint_pose,
+        mode="reset",
+        params={"default_pose": [0.0, -1.712, 1.712, -1.571, -1.571,
+                                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]},
+    )
+    randomize_arm_joint_state = EventTerm(
+        func=franka_stack_events.randomize_joint_by_gaussian_offset,
+        mode="reset",
+        params={"mean": 0.0, "std": 0.02, "asset_cfg": _ROBOT},
+    )
+    randomize_cube_positions = EventTerm(
+        func=franka_stack_events.randomize_object_pose,
+        mode="reset",
+        params={
+            "pose_range": {"x": (0.35, 0.55), "y": (-0.15, 0.15),
+                           "z": (0.0203, 0.0203), "yaw": (-1.0, 1.0)},
+            "min_separation": 0.10,
+            "asset_cfgs": [_CUBE1, _CUBE2, SceneEntityCfg("cube_3")],
+        },
+    )
+
+
+@configclass
+class StackingRewardsCfg:
+    reaching_cube2 = RewTerm(
+        func=rewards.object_ee_distance,
+        weight=1.0,
+        params={"std": 0.3, "object_cfg": _CUBE2, "ee_frame_cfg": _EE},
+    )
+    grasping_cube2 = RewTerm(
+        func=rewards.real_grasp_reward,
+        weight=2.0,
+        params={"object_cfg": _CUBE2, "minimal_height": 0.04},
+    )
+    lifting_cube2 = RewTerm(
+        func=rewards.lifting_height_reward,
+        weight=10.0,
+        params={"object_cfg": _CUBE2, "minimal_height": 0.04, "max_height": 0.08},
+    )
+    carry_above_cube1 = RewTerm(
+        func=rewards.object_xy_goal_distance,
+        weight=20.0,
+        params={"std": 0.10, "upper_object_cfg": _CUBE2,
+                "lower_object_cfg": _CUBE1, "min_height": 0.04},
+    )
+    lower_to_stack_height = RewTerm(
+        func=rewards.object_stack_height_distance,
+        weight=10.0,
+        params={"std": 0.025, "upper_object_cfg": _CUBE2,
+                "lower_object_cfg": _CUBE1, "height_diff": 0.0406,
+                "xy_threshold": 0.08},
+    )
+    open_when_aligned = RewTerm(
+        func=rewards.open_gripper_when_aligned,
+        weight=8.0,
+        params={"robot_cfg": _ROBOT, "upper_object_cfg": _CUBE2,
+                "lower_object_cfg": _CUBE1, "xy_threshold": 0.08,
+                "height_diff": 0.0406, "height_threshold": 0.025},
+    )
+    release_on_cube1 = RewTerm(
+        func=rewards.release_on_cube1,
+        weight=12.0,
+        params={"robot_cfg": _ROBOT, "upper_object_cfg": _CUBE2,
+                "lower_object_cfg": _CUBE1, "xy_threshold": 0.08,
+                "height_threshold": 0.025},
+    )
+    stacking_success = RewTerm(
+        func=rewards.stacking_reward,
+        weight=60.0,
+        params={"robot_cfg": _ROBOT, "upper_object_cfg": _CUBE2,
+                "lower_object_cfg": _CUBE1, "xy_threshold": 0.06,
+                "height_threshold": 0.015},
+    )
+    wrist_2_deviation = RewTerm(
+        func=rewards.wrist_2_deviation_penalty,
+        weight=-2.0,
+        params={"robot_cfg": _ROBOT, "target": -1.571},
+    )
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    joint_vel   = RewTerm(func=mdp.joint_vel_l2, weight=-1e-4,
+                          params={"asset_cfg": _ROBOT})
+
+
+@configclass
+class StackingTerminationsCfg:
+    time_out       = DoneTerm(func=mdp.time_out, time_out=True)
+    cube_1_dropped = DoneTerm(func=mdp.root_height_below_minimum,
+                              params={"minimum_height": -0.05, "asset_cfg": _CUBE1})
+    cube_2_dropped = DoneTerm(func=mdp.root_height_below_minimum,
+                              params={"minimum_height": -0.05, "asset_cfg": _CUBE2})
+    cube_3_dropped = DoneTerm(func=mdp.root_height_below_minimum,
+                              params={"minimum_height": -0.05,
+                                      "asset_cfg": SceneEntityCfg("cube_3")})
+    success        = DoneTerm(
+        func=rewards.cubes_stacked_termination,
+        params={"robot_cfg": _ROBOT, "upper_object_cfg": _CUBE2,
+                "lower_object_cfg": _CUBE1},
+    )
+
+
+@configclass
+class StackingObservationsCfg:
+    @configclass
+    class PolicyCfg(ObsGroup):
+        actions        = ObsTerm(func=mdp.last_action)
+        joint_pos      = ObsTerm(func=mdp.joint_pos_rel, clip=(-5.0, 5.0))
+        joint_vel      = ObsTerm(func=mdp.joint_vel_rel, clip=(-5.0, 5.0))
+        cube_positions = ObsTerm(func=mdp.cube_poses_in_base_frame,
+                                 params={"return_key": "pos"}, clip=(-5.0, 5.0))
+        eef_pos        = ObsTerm(func=mdp.ee_frame_pos,  clip=(-5.0, 5.0))
+        eef_quat       = ObsTerm(func=mdp.ee_frame_quat)
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Env  (switch task by changing the four lines marked PICK / STACKING)
+# ════════════════════════════════════════════════════════════════════════════
+
+@configclass
+class UR5RobotiqStackEnvCfg(StackEnvCfg):
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # ── PICK (ACTIVE) ── swap these four lines to switch to stacking ──
+        self.observations = PickObservationsCfg()       # STACKING: StackingObservationsCfg()
+        self.rewards      = PickRewardsCfg()             # STACKING: StackingRewardsCfg()
+        self.terminations = PickTerminationsCfg()        # STACKING: StackingTerminationsCfg()
+        self.events       = PickEventCfg()               # STACKING: StackingEventCfg()
+
+        # ── Robot ─────────────────────────────────────────────────────────
+        self.scene.robot = UR5_ROBOTIQ_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+        self.actions.arm_action = mdp.JointPositionActionCfg(
+            asset_name="robot",
+            joint_names=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
+                         "wrist_1_joint", "wrist_2_joint"],
+            scale=0.5,
+            use_default_offset=True,
+        )
+        self.actions.gripper_action = mdp.BinaryJointPositionActionCfg(
+            asset_name="robot",
+            joint_names=["finger_joint"],
+            open_command_expr={"finger_joint": 0.0},
+            close_command_expr={"finger_joint": 0.8},
+        )
+
+        self.gripper_joint_names = ["finger_joint"]
+        self.gripper_open_val    = 0.0
+        self.gripper_close_val   = 0.8
+        self.gripper_threshold   = 0.05
+
+        # ── Cubes ─────────────────────────────────────────────────────────
+        _cube_props = RigidBodyPropertiesCfg(
+            solver_position_iteration_count=16,
+            solver_velocity_iteration_count=1,
+            max_angular_velocity=1000.0,
+            max_linear_velocity=1000.0,
+            max_depenetration_velocity=5.0,
+            disable_gravity=False,
+        )
+
+        # cube_2: always present (pick target / stacking upper cube)
+        self.scene.cube_2 = RigidObjectCfg(
+            prim_path="{ENV_REGEX_NS}/Cube_2",
+            init_state=RigidObjectCfg.InitialStateCfg(pos=[0.45, 0.0, 0.0203], rot=[1, 0, 0, 0]),
+            spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/red_block.usd",
+                             scale=(1.0, 1.0, 1.0), rigid_props=_cube_props),
+        )
+
+        # STACKING: uncomment cube_1 and cube_3 below
+        # self.scene.cube_1 = RigidObjectCfg(
+        #     prim_path="{ENV_REGEX_NS}/Cube_1",
+        #     init_state=RigidObjectCfg.InitialStateCfg(pos=[0.40, 0.00, 0.0203], rot=[1, 0, 0, 0]),
+        #     spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/blue_block.usd",
+        #                      scale=(1.0, 1.0, 1.0), rigid_props=_cube_props),
+        # )
+        # self.scene.cube_3 = RigidObjectCfg(
+        #     prim_path="{ENV_REGEX_NS}/Cube_3",
+        #     init_state=RigidObjectCfg.InitialStateCfg(pos=[0.55, -0.10, 0.0203], rot=[1, 0, 0, 0]),
+        #     spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/green_block.usd",
+        #                      scale=(1.0, 1.0, 1.0), rigid_props=_cube_props),
+        # )
+
+        # ── EE frame ──────────────────────────────────────────────────────
+        marker_cfg = FRAME_MARKER_CFG.copy()
+        marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
+        marker_cfg.prim_path = "/Visuals/FrameTransformer"
+        self.scene.ee_frame = FrameTransformerCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/ur5/base_link",
+            debug_vis=False,
+            visualizer_cfg=marker_cfg,
+            target_frames=[
+                FrameTransformerCfg.FrameCfg(
+                    prim_path="{ENV_REGEX_NS}/Robot/ur5/wrist_3_link",
+                    name="end_effector",
+                    offset=OffsetCfg(pos=[0.0, 0.0, 0.13]),
+                ),
+            ],
+        )
+
+        self.curriculum          = None
+        self.sim.render_interval = self.decimation
+        self.scene.env_spacing   = 2.5
