@@ -160,9 +160,9 @@ class UR5RobotiqCubeLiftEnvCfg(LiftEnvCfg):
         self.scene.tiled_camera = TiledCameraCfg(
             prim_path="{ENV_REGEX_NS}/top_camera",
             offset=TiledCameraCfg.OffsetCfg(
-                pos=(0.5, 0.0, 1.2),
-                rot=(0.707, 0.0, 0.0, 0.707),
-                convention="world",
+                pos=(0.5, 0.0, 1.0),
+                rot=(0.0, 1.0, 0.0, 0.0),
+                convention="ros",
             ),
             data_types=["rgb"],
             spawn=sim_utils.PinholeCameraCfg(
