@@ -7,7 +7,7 @@
 - 빨강/파랑 큐브 중 지정된 색 큐브 pick
 - 카메라 기반 color-conditioned RL로 확장
 - 최종: 지정 색 큐브 pick → 다른 큐브 위 stack
-- Target: PRESM2026 (2026년 11월, 제주)
+
 
 ## 🤖 하드웨어 & 시뮬레이션
 
