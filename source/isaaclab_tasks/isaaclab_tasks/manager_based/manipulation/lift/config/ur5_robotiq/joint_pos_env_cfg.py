@@ -71,19 +71,33 @@ UR5_ROBOTIQ_CFG = ArticulationCfg(
             stiffness=400.0,
             damping=60.0,
         ),
+        # [FIX] effort/velocity limit + stiffness/damping ported from IsaacLab's own validated
+        # Robotiq 2F-85 reference config (isaaclab_assets/robots/franka.py: FRANKA_ROBOTIQ_GRIPPER_CFG)
+        # -- same physical gripper, different arm. Previous effort_limit_sim=10.0 was ~165x below
+        # that reference, which likely capped achievable grip force well below what's needed to
+        # hold a cube. Also splits out the inner-finger joints into their own low-PD "gripper_finger"
+        # group instead of lumping them into fully-passive (0/0): the reference config's own comment
+        # says this is "to enable the gripper to grasp in a parallel manner".
         "gripper_drive": ImplicitActuatorCfg(
             joint_names_expr=["finger_joint"],
-            effort_limit_sim=10.0,
-            velocity_limit_sim=1.0,
-            stiffness=11.25,
-            damping=0.1,
+            effort_limit_sim=1650.0,
+            velocity_limit_sim=10.0,
+            stiffness=17.0,
+            damping=0.02,
+        ),
+        "gripper_finger": ImplicitActuatorCfg(
+            joint_names_expr=["right_inner_finger_joint", "left_inner_finger_joint"],
+            effort_limit_sim=50.0,
+            velocity_limit_sim=10.0,
+            stiffness=0.2,
+            damping=0.001,
         ),
         "gripper_passive": ImplicitActuatorCfg(
             joint_names_expr=["right_outer_knuckle_joint",
-                              "right_inner_finger_joint",
                               "right_inner_finger_knuckle_joint",
-                              "left_inner_finger_knuckle_joint",
-                              "left_inner_finger_joint"],
+                              "left_inner_finger_knuckle_joint"],
+            effort_limit_sim=1.0,
+            velocity_limit_sim=10.0,
             stiffness=0.0,
             damping=0.0,
         ),
@@ -98,6 +112,10 @@ class UR5RobotiqCubeLiftEnvCfg(LiftEnvCfg):
         
         # reaching_object weight: 가까이 가기만으론 부족 (Kimi)
         self.rewards.reaching_object.weight = 0.8  # Kimi: 0.5 -> 0.8 (가까이 가기도 필요)
+        # Reward 중복 제거 (Claude Code 진단)
+        self.rewards.lifting_object.weight = 0.0  # object_is_lifted_bonus와 중복
+        self.rewards.object_goal_tracking.weight = 0.0  # pick 안정화만
+        self.rewards.object_goal_tracking_fine_grained.weight = 0.0
         self.rewards.reaching_object.params["std"] = 0.3
         
         self.scene.robot = UR5_ROBOTIQ_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
@@ -171,8 +189,8 @@ class UR5RobotiqCubeLiftEnvCfg(LiftEnvCfg):
                 horizontal_aperture=20.955,
                 clipping_range=(0.1, 3.0),
             ),
-            width=64,
-            height=64,
+            width=540,  # DLSS 300px 통과 (540*0.58=313)
+            height=540,  # DLSS 300px 통과
         )
 
         self.scene.ee_frame = FrameTransformerCfg(
@@ -196,12 +214,19 @@ class UR5RobotiqCubeLiftEnvCfg(LiftEnvCfg):
         # Object_is_lifted bonus reward (Kimi 조언 Step 3)
         # 목적: outcome-based reward - 실제 lift 성공에 강한 보상
         # 예상: 잡기 + 들어올리기 학습 유도 (fine-grained reach reward 보완)
+        # [FIX] object_is_lifted -> object_is_lifted_sustained: object 초기/리셋 높이(0.055, 아래
+        # RigidObjectCfg 참고)가 이 minimal_height(0.05)보다 이미 높아서, height 단독 조건은
+        # 아무것도 안 해도 거의 항상 참이 될 수 있음. EE 근접 조건 + N스텝 연속 유지 조건을 추가해
+        # "우연히 튕겨서 5cm 넘긴 것"과 "실제로 쥐고 버틴 것"을 구분함.
         self.rewards.object_is_lifted_bonus = RewTerm(
-            func=mdp.object_is_lifted,
+            func=mdp.object_is_lifted_sustained,
             weight=10.0,
             params={
                 "minimal_height": 0.05,  # 15cm(unreachable) -> 5cm (Kimi 지적)
+                "min_steps": 10,  # 50Hz 제어(sim.dt=0.01*decimation=2) 기준 약 0.2초 연속 유지
+                "max_ee_distance": 0.06,  # ee_frame(wrist_3+13cm offset) 기준 대략적 추정치, 실측 권장
                 "object_cfg": SceneEntityCfg("object"),
+                "ee_frame_cfg": SceneEntityCfg("ee_frame"),
             },
         )
         

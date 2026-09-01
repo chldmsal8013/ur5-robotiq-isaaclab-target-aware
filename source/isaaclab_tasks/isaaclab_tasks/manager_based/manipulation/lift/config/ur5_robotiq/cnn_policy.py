@@ -47,7 +47,7 @@ class NatureCNN(nn.Module):
             nn.Flatten(),
         )
         with torch.no_grad():
-            dummy = torch.zeros(1, in_channels, 64, 64)
+            dummy = torch.zeros(1, in_channels, 540, 540)
             n_flatten = self.conv(dummy).shape[1]
         self.fc = nn.Sequential(nn.Linear(n_flatten, out_dim), nn.ReLU())
 

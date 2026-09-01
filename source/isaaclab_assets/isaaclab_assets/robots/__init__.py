@@ -27,3 +27,4 @@ from .shadow_hand import *
 from .spot import *
 from .unitree import *
 from .universal_robots import *
+from isaaclab_assets.robots.open_duck_mini import *

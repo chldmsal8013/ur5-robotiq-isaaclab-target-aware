@@ -25,6 +25,43 @@ def object_is_lifted(
     return torch.where(object.data.root_pos_w[:, 2] > minimal_height, 1.0, 0.0)
 
 
+def object_is_lifted_sustained(
+    env: ManagerBasedRLEnv,
+    minimal_height: float,
+    min_steps: int,
+    max_ee_distance: float,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
+) -> torch.Tensor:
+    """Reward held only after the object stays above `minimal_height` AND near the end-effector
+    for `min_steps` consecutive control steps.
+
+    `object_is_lifted` alone fires on height only. In this task the object's resting height
+    (see the object RigidObjectCfg init_state, z=0.055) is already slightly above the bonus
+    threshold used elsewhere (minimal_height=0.05), so a height-only check can be nearly always
+    true even for an untouched object -- adding an EE-proximity requirement and a consecutive-step
+    streak rules out that case and rejects momentary contact bounces, which decay within a step or
+    two once contact ends. The streak buffer is lazily attached to `env`; it self-resets on episode
+    reset because right after reset the EE is at the fixed home pose (far from the newly-sampled
+    object position), so `held` is False on the first post-reset step -- no explicit reset hook needed.
+    """
+    object: RigidObject = env.scene[object_cfg.name]
+    ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
+    object_pos_w = object.data.root_pos_w
+    ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
+    ee_distance = torch.norm(object_pos_w - ee_pos_w, dim=1)
+
+    held = (object_pos_w[:, 2] > minimal_height) & (ee_distance < max_ee_distance)
+
+    if not hasattr(env, "_lift_streak_buf") or env._lift_streak_buf.shape[0] != env.num_envs:
+        env._lift_streak_buf = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+
+    env._lift_streak_buf = torch.where(
+        held, env._lift_streak_buf + 1, torch.zeros_like(env._lift_streak_buf)
+    )
+    return (env._lift_streak_buf >= min_steps).float()
+
+
 def object_ee_distance(
     env: ManagerBasedRLEnv,
     std: float,
