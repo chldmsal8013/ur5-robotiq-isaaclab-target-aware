@@ -7,7 +7,7 @@ Reinforcement learning for target-aware pick task with UR5 robot using **Isaac L
 - Pick a specified color cube (red/blue)
 - Extend to camera-based color-conditioned RL
 - Final goal: Pick specified color cube then stack on another cube
-- Target: PRESM 2026 (November 2026, Jeju)
+
 
 ## Hardware & Simulation
 
