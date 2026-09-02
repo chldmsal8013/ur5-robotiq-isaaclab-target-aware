@@ -24,3 +24,7 @@ Thumbs.db
 training_lift_30k.txt
 training_stack_fresh.txt
 *.log
+
+# Backup files
+*.bak_*
+*.bak
