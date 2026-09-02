@@ -43,10 +43,16 @@ UR5_ROBOTIQ_CFG = ArticulationCfg(
             disable_gravity=False,
             max_depenetration_velocity=5.0,
         ),
+        # [FIX] velocity_iteration_count 0 -> 1. IsaacLab 공식 UR10e_CFG(universal_robots.py) --
+        # solver_position_iteration_count=16으로 우리와 정확히 동일한 값을 쓰는 같은 UR 계열
+        # 레퍼런스 -- 도 velocity_iteration_count=1을 씀. 0이면 접촉 시 velocity-level 제약(반발/
+        # 마찰) 해석이 생략돼 에너지가 소산되지 않고 오히려 증폭될 수 있음 -- gripper effort_limit을
+        # 165배(10->1650) 올린 이후 critic이 iter 26 근처에서 폭주(value_function loss ~1e29)한
+        # 사고와 같은 계열의 원인으로 지목된 항목.
         articulation_props=ArticulationRootPropertiesCfg(
             enabled_self_collisions=False,
             solver_position_iteration_count=16,
-            solver_velocity_iteration_count=0,
+            solver_velocity_iteration_count=1,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
@@ -223,8 +229,14 @@ class UR5RobotiqCubeLiftEnvCfg(LiftEnvCfg):
             weight=10.0,
             params={
                 "minimal_height": 0.05,  # 15cm(unreachable) -> 5cm (Kimi 지적)
-                "min_steps": 10,  # 50Hz 제어(sim.dt=0.01*decimation=2) 기준 약 0.2초 연속 유지
-                "max_ee_distance": 0.06,  # ee_frame(wrist_3+13cm offset) 기준 대략적 추정치, 실측 권장
+                # [FIX] 9시간/21320iter 실측 결과 Bonus가 사실상 0(1/21320회)이라 조건이 너무 엄격했음.
+                # min_steps 10->5(0.2s->0.1s), max_ee_distance 0.06->0.12(2x)로 완화.
+                # 주의: max_ee_distance를 너무 풀면 "안 잡았는데 근처를 지나가기만 해도 성공" 판정되는
+                # 원래 버그(resting height 0.055 > minimal_height 0.05)의 위험이 다시 커짐 -- 이번에도
+                # Bonus가 여전히 거의 안 뜨면 더 풀지 말고, height/proximity/sustain 각각을 분리해서
+                # 로그를 찍어보는 게 다음 단계로 맞음.
+                "min_steps": 5,
+                "max_ee_distance": 0.12,
                 "object_cfg": SceneEntityCfg("object"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
             },
